@@ -1,0 +1,50 @@
+name: Gerar APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Criar projeto Flutter e adicionar plugins
+        run: |
+          flutter create --project-name meu_smartphone --org com.aluno --platforms android app
+          cp lib/main.dart app/lib/main.dart
+          cd app
+          flutter pub add image_picker geolocator sensors_plus flutter_local_notifications:^19.4.0
+
+      - name: Permissoes e configuracao do Android
+        working-directory: app/android/app
+        run: |
+          sed -i '0,/<application/s##<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <application#' src/main/AndroidManifest.xml
+          if [ -f build.gradle.kts ]; then
+            sed -i '0,/compileOptions {/s//compileOptions {\n        isCoreLibraryDesugaringEnabled = true/' build.gradle.kts
+            printf '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n' >> build.gradle.kts
+          else
+            sed -i '0,/compileOptions {/s//compileOptions {\n        coreLibraryDesugaringEnabled true/' build.gradle
+            printf "\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n" >> build.gradle
+          fi
+          cat src/main/AndroidManifest.xml | head -8
+          grep -n "Desugaring" build.gradle*
+
+      - name: Compilar APK
+        working-directory: app
+        run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: meu-smartphone-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
